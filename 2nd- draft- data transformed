@@ -1,0 +1,178 @@
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import pandas as pd
+import os
+
+# Specify the path to geckodriver
+geckodriver_path = r"C:\WebDriver\geckodriver.exe"
+
+# Initialize Firefox options (without headless mode)
+firefox_options = FirefoxOptions()
+
+# (Optional) Add Firefox profile path (if you want to use a specific Firefox profile)
+firefox_options.profile = r"C:\Users\dewagaur\AppData\Roaming\Mozilla\Firefox\Profiles\83nybmxd.default-esr"
+
+# Set a custom download directory (if needed)
+firefox_options.set_preference("browser.download.dir", r"C:\Users\dewagaur\Downloads")
+firefox_options.set_preference("browser.download.folderList", 2)
+firefox_options.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/vnd.ms-excel")
+
+# Initialize the WebDriver using Service and options
+service = FirefoxService(executable_path=geckodriver_path)
+driver = webdriver.Firefox(service=service, options=firefox_options)
+
+# Open the webpage
+url = "https://mars-admin.aka.amazon.com/batch-statistics"
+print("Opening the webpage...")
+driver.get(url)
+
+# Increase the timeout for elements to load
+wait = WebDriverWait(driver, 30)
+
+# Add a delay to give the page some time to load completely
+print("Waiting for the page to load...")
+time.sleep(30)
+print("Page loaded")
+
+# Step 1: Click the scroll menu to open dropdown (First click)
+try:
+    print("Attempting to click scroll menu...")
+    scroll_menu = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="adPrograms"]')))
+    scroll_menu.click()
+    print("Scroll menu clicked, selecting moderation option...")
+    moderation_option = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/div[1]/div/div/div/div/nav[1]/div/ul/li[3]/span/div/div/ul/li[3]/a")))
+    moderation_option.click()
+    print("Moderation option selected.")
+except Exception as e:
+    print(f"Error in Step 1: {e}")
+
+# Step 2: Click the 'Marketplace' scroll menu and select 'EN'
+try:
+    print("Attempting to open 'Marketplace' scroll menu...")
+    marketplace_menu = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//li[//label[contains(text(),'Marketplace')]]/following-sibling::li//button[@id='language']")))
+    marketplace_menu.click()
+    print("Marketplace menu clicked, selecting 'EN' option...")
+    en_option = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/div[1]/div/div/div/div/nav[2]/div/ul[2]/li[2]/span/div/div/ul/li[2]/a")))
+    driver.execute_script("arguments[0].scrollIntoView(true);", en_option)
+    en_option.click()
+    print("'EN' option selected.")
+except Exception as e:
+    print(f"Error in Step 2: {e}")
+
+# Step 3: Press the first button
+try:
+    print("Attempting to click the first button...")
+    first_button = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div/div/div/nav[1]/div/ul/li[2]/span/button[2]")))
+    first_button.click()
+    print("First button clicked.")
+except Exception as e:
+    print(f"Failed to click first button: {e}")
+
+# Step 4: Press the second button
+try:
+    print("Attempting to click the second button...")
+    second_button = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div/div/div/nav[1]/div/ul/li[2]/span/button[1]")))
+    second_button.click()
+    print("Second button clicked.")
+except Exception as e:
+    print(f"Failed to click second button: {e}")
+
+# Wait for data to load after button press
+print("Waiting for data to load...")
+time.sleep(10)
+
+# Define keywords to filter the extracted text
+keywords = ['HSA', 'IMAGE_MODERATION', 'WEEK', 'Federated', 'BRAND_PROFILE', 'Spotlight', 'Stores', 'ASSET']
+
+# Initialize lists for data
+ad_queue, volumes, sla_breached = [], [], []
+
+# 1. Extract "Ad Queue"
+try:
+    print("Extracting 'Ad Queue'...")
+    ad_queue_elements = driver.find_elements(By.XPATH, "//div[@class='container-fluid']//div[@class='title row']")
+
+    # Iterate over the ad queue elements and filter based on keywords
+    for idx, element in enumerate(ad_queue_elements):
+        text = element.text
+        if any(keyword.lower() in text.lower() for keyword in keywords):
+            ad_queue.append(text)
+
+            # Extract the corresponding "Volumes"
+            try:
+                volumes_element = driver.find_element(By.XPATH,
+                                                      f"(//div[contains(@class, 'container-fluid')]//div[contains(@class, 'row')]//div/div[3]/div[1]/span/span[1])[{idx + 1}]")
+                volumes.append(volumes_element.text)
+            except Exception as e:
+                volumes.append(None)
+                print(f"Error extracting 'Volumes' for Ad Queue '{text}': {e}")
+
+            # Extract the corresponding "SLA breached"
+            try:
+                # Now only get the SLA breached for the current row (idx + 1)
+                sla_breached_element = driver.find_element(By.XPATH,
+                                                           f"(//div[contains(@class, 'container-fluid')]//div[contains(@class, 'row')]//div/div[2]/div[2]/div/div[2])[{idx + 1}]")
+                sla_text = sla_breached_element.text
+                if sla_text:  # Check if the text is not empty
+                    # Extract only the numeric part from the "SLA breached: X" text
+                    number = sla_text.split(":")[-1].strip()  # Split by ':' and take the last part (number)
+                    sla_breached.append(number)
+                else:
+                    sla_breached.append(None)  # Append None if there is no SLA breached text
+            except Exception as e:
+                sla_breached.append(None)  # Append None if there is an error
+                print(f"Error extracting 'SLA breached' for Ad Queue '{text}': {e}")
+
+    print("Ad Queue extracted:", ad_queue)
+except Exception as e:
+    print(f"Ad Queue not found: {e}")
+
+
+
+# Check lengths of lists before padding
+print("Checking list lengths before padding:")
+print(f"Ad Queue: {len(ad_queue)}, Volumes: {len(volumes)}, SLA breached: {len(sla_breached)}")
+
+# Ensure all lists have the same length by padding shorter lists with None
+max_length = max(len(ad_queue), len(volumes), len(sla_breached))
+
+ad_queue += [None] * (max_length - len(ad_queue))
+volumes += [None] * (max_length - len(volumes))
+sla_breached += [None] * (max_length - len(sla_breached))
+
+# Check lengths of lists after padding
+print("Checking list lengths after padding:")
+print(f"Ad Queue: {len(ad_queue)}, Volumes: {len(volumes)}, SLA breached: {len(sla_breached)}")
+
+# Close the WebDriver after scraping is complete
+print("Closing WebDriver...")
+driver.quit()
+
+# Store the extracted data in a pandas DataFrame
+print("Storing data in DataFrame...")
+data = {
+    "Ad Queue": ad_queue,
+    "Volumes": volumes,
+    "SLA breached": sla_breached
+}
+
+df = pd.DataFrame(data)
+
+# Specify the path where you want to save the Excel file
+excel_file_path = os.path.join(r"C:\Users\dewagaur\Downloads", "excel_output_filtered.xlsx")
+
+# Write the data to an Excel file
+print(f"Writing data to Excel file at {excel_file_path}...")
+df.to_excel(excel_file_path, index=False)
+
+print(f"Filtered data has been successfully written to {excel_file_path}")
