@@ -1,0 +1,231 @@
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import pandas as pd
+import os
+
+# Specify the path to geckodriver
+geckodriver_path = r"C:\WebDriver\geckodriver.exe"
+
+# Initialize Firefox options
+firefox_options = FirefoxOptions()
+
+# (Optional) Add Firefox profile path
+firefox_options.profile = r"C:\Users\dewagaur\AppData\Roaming\Mozilla\Firefox\Profiles\83nybmxd.default-esr"
+
+# Set a custom download directory
+firefox_options.set_preference("browser.download.dir", r"C:\Users\dewagaur\Downloads")
+firefox_options.set_preference("browser.download.folderList", 2)
+firefox_options.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/vnd.ms-excel")
+
+# Initialize the WebDriver using Service and options
+service = FirefoxService(executable_path=geckodriver_path)
+driver = webdriver.Firefox(service=service, options=firefox_options)
+
+# Open the webpage
+url = "https://mars-admin.aka.amazon.com/batch-statistics"
+print("Opening the webpage...")
+driver.get(url)
+
+# Increase the timeout for elements to load
+wait = WebDriverWait(driver, 30)
+
+# Add a delay to give the page some time to load completely
+print("Waiting for the page to load...")
+time.sleep(30)
+print("Page loaded")
+
+# Step 1: Click the scroll menu to open dropdown
+try:
+    print("Attempting to click scroll menu...")
+    scroll_menu = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="adPrograms"]')))
+    scroll_menu.click()
+    print("Scroll menu clicked, selecting moderation option...")
+    moderation_option = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/div[1]/div/div/div/div/nav[1]/div/ul/li[3]/span/div/div/ul/li[3]/a")))
+    moderation_option.click()
+    print("Moderation option selected.")
+except Exception as e:
+    print(f"Error in Step 1: {e}")
+
+# Step 2: Click the 'Marketplace' scroll menu and select 'EN'
+try:
+    print("Attempting to open 'Marketplace' scroll menu...")
+    marketplace_menu = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//li[//label[contains(text(),'Marketplace')]]/following-sibling::li//button[@id='language']")))
+    marketplace_menu.click()
+    print("Marketplace menu clicked, selecting 'EN' option...")
+    en_option = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "/html/body/div[1]/div/div/div/div/nav[2]/div/ul[2]/li[2]/span/div/div/ul/li[2]/a")))
+    driver.execute_script("arguments[0].scrollIntoView(true);", en_option)
+    en_option.click()
+    print("'EN' option selected.")
+except Exception as e:
+    print(f"Error in Step 2: {e}")
+
+# Step 3: Press the first button
+try:
+    print("Attempting to click the first button...")
+    first_button = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div/div/div/nav[1]/div/ul/li[2]/span/button[2]")))
+    first_button.click()
+    print("First button clicked.")
+except Exception as e:
+    print(f"Failed to click first button: {e}")
+
+# Step 4: Press the second button
+try:
+    print("Attempting to click the second button...")
+    second_button = wait.until(
+        EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div/div/div/nav[1]/div/ul/li[2]/span/button[1]")))
+    second_button.click()
+    print("Second button clicked.")
+except Exception as e:
+    print(f"Failed to click second button: {e}")
+
+# Wait for data to load after button press
+print("Waiting for data to load...")
+time.sleep(10)
+
+# Define keywords to filter the extracted text
+keywords = ['HSA', 'IMAGE_MODERATION', 'WEEK', 'Federated', 'BRAND_PROFILE', 'Spotlight', 'Stores', 'ASSET', 'Default']
+
+# **Restricted keywords**: If any of these keywords appear in an element, it will be skipped
+restricted_keywords = ['APPEALS', 'HI','AR','ES','NE']  # Add more restricted keywords as needed
+
+# Initialize variables in case elements are not found
+ad_queue, volumes, sla_breached = [], [], []
+
+# 1. Extract "Ad Queue"
+try:
+    print("Extracting 'Ad Queue'...")
+    ad_queue_elements = driver.find_elements(By.XPATH, "//div[@class='container-fluid']//div[@class='title row']")
+    volumes_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'container-fluid')]//div[contains(@class, 'row')]//div/div[3]/div[1]/span/span[1]")
+    sla_breached_elements = driver.find_elements(By.XPATH, "//div[contains(@class, 'container-fluid')]//div[contains(@class, 'row')]//div/div[2]/div[2]/div/div[2]")
+
+    for i, element in enumerate(ad_queue_elements):
+        text = element.text
+        # **If restricted keyword is in the text, skip this element**
+        if any(restricted.lower() in text.lower() for restricted in restricted_keywords):
+            print(f"Skipping '{text}' due to restricted keywords.")
+            continue
+
+        # **Filtering logic based on valid keywords**
+        if any(keyword.lower() in text.lower() for keyword in keywords):
+            ad_queue.append(text)
+
+            # **Limit `Volumes` and `SLA Breached` till valid `Ad Queue`**
+            if i < len(volumes_elements):
+                volumes.append(volumes_elements[i].text)
+            if i < len(sla_breached_elements):
+                # **Only extract the number from "SLA breached: X"**
+                sla_breached_text = sla_breached_elements[i].text
+                sla_breached_number = sla_breached_text.split(": ")[1] if ": " in sla_breached_text else sla_breached_text
+                sla_breached.append(sla_breached_number)
+
+    print("Ad Queue extracted:", ad_queue)
+    print("Volumes extracted:", volumes)
+    print("SLA breached extracted:", sla_breached)
+except Exception as e:
+    print(f"Error during extraction: {e}")
+
+# Check lengths of lists before padding
+print("Checking list lengths before padding:")
+print(f"Ad Queue: {len(ad_queue)}, Volumes: {len(volumes)}, SLA breached: {len(sla_breached)}")
+
+# Ensure all lists have the same length by padding shorter lists with None
+max_length = max(len(ad_queue), len(volumes), len(sla_breached))
+
+ad_queue += [None] * (max_length - len(ad_queue))
+volumes += [None] * (max_length - len(volumes))
+sla_breached += [None] * (max_length - len(sla_breached))
+
+# Check lengths of lists after padding
+print("Checking list lengths after padding:")
+print(f"Ad Queue: {len(ad_queue)}, Volumes: {len(volumes)}, SLA breached: {len(sla_breached)}")
+
+# Function to sum values based on keyword pairs
+def sum_values_by_keywords(ad_queue, volumes, sla_breached, keyword_pairs):
+    keyword_sums = {}
+
+    for i, ad_item in enumerate(ad_queue):
+        if ad_item is None:  # Skip None values
+            continue
+
+        for keyword in keyword_pairs:
+            if all(kw in ad_item for kw in keyword):
+                # Add the volume and SLA breached values to the corresponding keyword sum
+                if keyword not in keyword_sums:
+                    keyword_sums[keyword] = {'volume_sum': 0, 'sla_breached_sum': 0}
+
+                # Add volume and SLA breached values
+                keyword_sums[keyword]['volume_sum'] += int(volumes[i])
+                keyword_sums[keyword]['sla_breached_sum'] += int(sla_breached[i])
+
+    return keyword_sums
+
+# Example keyword pairs for summing values
+keyword_pairs = [
+    ('FEDERATED', 'ASIN'),
+    ('BRAND', 'LOGO'),
+    ('CUSTOM', 'IMAGE'),
+    ('BRAND', 'PROFILE'),
+    ('ASSET', 'TIER'),
+    ('FEDERATED', 'TEXT'),
+    ('IMAGE', 'MODERATION'),
+    ('STORE', 'SPOTLIGHT'),
+    ('HSA', 'AE'),
+    ('HSA', 'EG'),
+    ('HSA', 'SA'),
+    ('HSA', 'SG'),
+    ('HSA', 'ZA'),
+    ('Default', 'Labeling')
+]
+
+# Call the function to sum values
+summed_results = sum_values_by_keywords(ad_queue, volumes, sla_breached, keyword_pairs)
+
+# Print the summarized results
+print("Summed values based on keyword pairs:")
+for keywords, totals in summed_results.items():
+    print(f"Keywords {keywords}: Total Volume = {totals['volume_sum']}, Total SLA Breached = {totals['sla_breached_sum']}")
+
+# Prepare new data for summed Ad Queue with keyword pairs
+summed_ad_queue = []
+summed_volumes = []
+summed_sla_breached = []
+
+for keywords, totals in summed_results.items():
+    summed_ad_queue.append('  '.join(keywords))  # Add the pair of keywords used for summing
+    summed_volumes.append(totals['volume_sum'])   # Add summed volume
+    summed_sla_breached.append(totals['sla_breached_sum'])  # Add summed SLA breached
+
+# Calculate the total of Volumes and SLA Breached
+total_volumes = sum(summed_volumes)
+total_sla_breached = sum(summed_sla_breached)
+
+# Append the 'Total' row
+summed_ad_queue.append('Total')
+summed_volumes.append(total_volumes)
+summed_sla_breached.append(total_sla_breached)
+
+# Update the data dictionary with the summed results
+data = {
+    "Ad Queue": summed_ad_queue,
+    "Volumes": summed_volumes,
+    "SLA Breached": summed_sla_breached
+}
+
+# Create a new DataFrame and save to Excel
+df = pd.DataFrame(data)
+output_path = os.path.join(r"C:\Users\dewagaur\Downloads", "summed_extracted_data.xlsx")
+df.to_excel(output_path, index=False)
+
+print(f"Summed data saved to {output_path}")
+
+# Close the WebDriver
+driver.quit()
