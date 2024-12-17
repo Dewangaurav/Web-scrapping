@@ -245,6 +245,33 @@ df.to_excel(output_path, index=False)
 
 print(f"Summed and sorted data saved to {output_path}")
 
+
+# Add formatting for bold headers and 'Total' row using openpyxl
+from openpyxl import load_workbook
+from openpyxl.styles import Font
+
+# Load the Excel file you just saved
+wb = load_workbook(output_path)
+ws = wb.active
+
+# Bold the column headers (first row)
+for cell in ws[1]:  # First row contains headers
+    cell.font = Font(bold=True)
+
+# Bold the "Total" row
+for row in ws.iter_rows():
+    for cell in row:
+        if cell.value == "Total":  # Check if the cell contains "Total"
+            for total_cell in row:  # Apply bold to all cells in the "Total" row
+                total_cell.font = Font(bold=True)
+            break  # Exit the loop after processing the "Total" row
+
+# Save the updated Excel file
+wb.save(output_path)
+
+print(f"Updated Excel file with bold headings and 'Total' row saved at {output_path}")
+
+
 # Close the WebDriver
 driver.quit()
 
